@@ -1,29 +1,24 @@
-from unittest.mock import MagicMock
+from pydantic_ai.models.test import TestModel
 
 from momtest.coach import CoachEngine
 
 
-def _fake_response(text):
-    msg = MagicMock()
-    msg.content = [MagicMock(text=text)]
-    return msg
-
-
-def test_tick_merges_partial_coverage(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy")
+def test_tick_merges_partial_coverage():
     eng = CoachEngine("hypo", ["problem", "budget"])
-    eng.client = MagicMock()
-    eng.client.messages.create.return_value = _fake_response(
-        '{"questions": [], "alerts": [], "coverage": {"problem": "covered"}, "facts": []}')
-    update = eng.tick("THEM: stuff")
+    model = TestModel(custom_output_args={
+        "questions": [], "alerts": [], "coverage": {"problem": "covered"}, "facts": []})
+    with eng.agent.override(model=model):
+        update = eng.tick("THEM: stuff")
     assert eng.coverage == {"problem": "covered", "budget": "missing"}
     assert update.coverage == {"problem": "covered"}
 
 
-def test_tick_parse_failure_returns_none_and_keeps_coverage(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy")
+def test_tick_empty_coverage_keeps_existing():
     eng = CoachEngine("hypo", ["problem"])
-    eng.client = MagicMock()
-    eng.client.messages.create.return_value = _fake_response("not json")
-    assert eng.tick("THEM: stuff") is None
+    model = TestModel(custom_output_args={
+        "questions": ["Ask: when did that last happen?"],
+        "alerts": [], "coverage": {}, "facts": []})
+    with eng.agent.override(model=model):
+        update = eng.tick("THEM: stuff")
     assert eng.coverage == {"problem": "missing"}
+    assert update.questions == ["Ask: when did that last happen?"]

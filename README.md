@@ -11,7 +11,7 @@ Writes a markdown debrief per call to `calls/`.
 - Apple Silicon Mac (Parakeet runs via MLX), macOS 13+
 - Xcode command line tools (`xcode-select --install`)
 - `uv`
-- `ANTHROPIC_API_KEY` in the environment
+- API key for your model provider in the environment (default `ANTHROPIC_API_KEY`; set `MOMTEST_MODEL` like `openai:gpt-5` to switch providers)
 
 ## Setup
 

@@ -87,7 +87,7 @@ class Session:
             for f in update.facts:
                 if f not in self.state.facts:
                     self.state.facts.append(f)
-            self.alert_history.extend(update.alerts)
+            self.alert_history.extend(a.model_dump() for a in update.alerts)
 
     def keys_loop(self) -> None:
         if not sys.stdin.isatty():

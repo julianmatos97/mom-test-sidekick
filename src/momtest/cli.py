@@ -6,9 +6,26 @@ import os
 import sys
 from pathlib import Path
 
+from momtest.coach import resolve_model
 from momtest.session import Session
 
 FIXTURE = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "demo.wav"
+
+PROVIDER_ENV_VARS = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "google-gla": "GOOGLE_API_KEY",
+    "groq": "GROQ_API_KEY",
+}
+
+
+def check_api_key() -> None:
+    model = resolve_model()
+    provider = model.split(":", 1)[0]
+    var = PROVIDER_ENV_VARS.get(provider)
+    if var and not os.environ.get(var):
+        sys.exit(f"{var} not set — the coach needs it for model {model!r} "
+                 "(set MOMTEST_MODEL to use a different provider).")
 
 
 def main() -> None:
@@ -24,8 +41,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        sys.exit("ANTHROPIC_API_KEY not set — the coach needs it.")
+    check_api_key()
 
     if args.cmd == "start":
         prospect = args.prospect or input("Prospect name: ").strip() or "unknown"

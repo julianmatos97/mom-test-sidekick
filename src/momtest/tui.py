@@ -39,7 +39,7 @@ def build_hud(state: HudState) -> Layout:
         border_style=STATUS_STYLE.get(state.status, "white")))
 
     if state.update.alerts:
-        alerts = Group(*[Text(f"⚠ {a.get('kind', '?').upper()}: {a.get('detail', '')}",
+        alerts = Group(*[Text(f"⚠ {a.kind.upper()}: {a.detail}",
                               style="bold red") for a in state.update.alerts])
         border = "red"
     else:

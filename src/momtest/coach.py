@@ -1,13 +1,14 @@
-"""Mom Test coach: builds prompts, calls Claude, parses structured guidance."""
+"""Mom Test coach: builds prompts, calls an LLM via pydantic-ai, returns structured guidance."""
 from __future__ import annotations
 
 import json
-import re
-from dataclasses import dataclass, field
+import os
+from typing import Literal
 
-import anthropic
+from pydantic import BaseModel, Field, field_validator
+from pydantic_ai import Agent
 
-MODEL = "claude-haiku-4-5-20251001"
+DEFAULT_MODEL = "anthropic:claude-haiku-4-5-20251001"
 
 SYSTEM_PROMPT = """\
 You are a live coach for customer discovery calls, enforcing The Mom Test (Rob Fitzpatrick).
@@ -20,23 +21,35 @@ Rules you enforce:
 - Chase concrete facts: money, time, tools, named events ("when did that last happen?",
   "walk me through the last time", "what else did you try?", "who else should I talk to?").
 
-Respond with ONLY a JSON object, no prose:
-{
-  "questions": [up to 2 short imperative suggestions, e.g. "Ask: when did that last happen?"],
-  "alerts": [{"kind": "pitching"|"hypothetical"|"compliment"|"fluff", "detail": "<1 short sentence>"}],
-  "coverage": {"<goal>": "missing"|"partial"|"covered", ...for each goal given},
-  "facts": [new concrete facts from the recent transcript only]
-}
+Fill each field of the structured output as follows:
+- questions: up to 2 short imperative suggestions, e.g. "Ask: when did that last happen?"
+- alerts: Mom Test violations, each with a kind (pitching, hypothetical, compliment, or fluff)
+  and a 1-sentence detail.
+- coverage: a status for each discovery goal given (missing, partial, or covered).
+- facts: new concrete facts from the recent transcript only.
 Alerts only for things happening in the RECENT transcript. Empty lists are fine.
 """
 
 
-@dataclass
-class CoachUpdate:
-    questions: list[str] = field(default_factory=list)
-    alerts: list[dict] = field(default_factory=list)
-    coverage: dict[str, str] = field(default_factory=dict)
-    facts: list[str] = field(default_factory=list)
+class Alert(BaseModel):
+    kind: Literal["pitching", "hypothetical", "compliment", "fluff"]
+    detail: str
+
+
+class CoachUpdate(BaseModel):
+    questions: list[str] = Field(default_factory=list)
+    alerts: list[Alert] = Field(default_factory=list)
+    coverage: dict[str, str] = Field(default_factory=dict)
+    facts: list[str] = Field(default_factory=list)
+
+    @field_validator("questions")
+    @classmethod
+    def _clamp_questions(cls, v: list[str]) -> list[str]:
+        return v[:2]
+
+
+def resolve_model() -> str:
+    return os.environ.get("MOMTEST_MODEL", DEFAULT_MODEL)
 
 
 def build_user_prompt(hypothesis: str, recent: str, summary: str, coverage: dict[str, str]) -> str:
@@ -48,39 +61,23 @@ def build_user_prompt(hypothesis: str, recent: str, summary: str, coverage: dict
     )
 
 
-def parse_response(raw: str) -> CoachUpdate | None:
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(data, dict):
-        return None
-    return CoachUpdate(
-        questions=[str(q) for q in data.get("questions", [])][:2],
-        alerts=[a for a in data.get("alerts", []) if isinstance(a, dict)],
-        coverage={str(k): str(v) for k, v in data.get("coverage", {}).items()},
-        facts=[str(f) for f in data.get("facts", [])],
-    )
-
-
 class CoachEngine:
-    def __init__(self, hypothesis: str, goals: list[str]):
-        self.client = anthropic.Anthropic()
+    def __init__(self, hypothesis: str, goals: list[str], model: str | None = None):
+        self.agent: Agent[None, CoachUpdate] = Agent(
+            model or resolve_model(),
+            output_type=CoachUpdate,
+            system_prompt=SYSTEM_PROMPT,
+            defer_model_check=True,
+        )
         self.hypothesis = hypothesis
         self.coverage: dict[str, str] = {g: "missing" for g in goals}
         self.summary = ""
 
     def tick(self, recent: str) -> CoachUpdate | None:
-        """One coaching pass. Returns None on parse failure (caller keeps last state)."""
-        msg = self.client.messages.create(
-            model=MODEL,
-            max_tokens=600,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": build_user_prompt(
-                self.hypothesis, recent, self.summary, self.coverage)}],
-        )
-        update = parse_response(msg.content[0].text)
-        if update and update.coverage:
+        """One coaching pass. Raises on model failure (caller retries); merges coverage."""
+        result = self.agent.run_sync(build_user_prompt(
+            self.hypothesis, recent, self.summary, self.coverage))
+        update = result.output
+        if update.coverage:
             self.coverage.update(update.coverage)
         return update
