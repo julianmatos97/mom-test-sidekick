@@ -41,14 +41,14 @@ class Session:
 
     @classmethod
     def live(cls, prospect: str, hypothesis: str) -> "Session":
-        you_q, them_q = queue.Queue(), queue.Queue()
+        you_q, them_q = queue.Queue(maxsize=100), queue.Queue(maxsize=100)
         return cls(prospect, hypothesis,
                    sources=[audio.MicCapture(you_q), audio.SystemCapture(them_q)],
                    channels={"you": you_q, "them": them_q})
 
     @classmethod
     def demo(cls, fixture: Path) -> "Session":
-        them_q: queue.Queue = queue.Queue()
+        them_q: queue.Queue = queue.Queue(maxsize=100)
         return cls("Demo", "demo hypothesis",
                    sources=[audio.FileCapture(them_q, fixture)],
                    channels={"them": them_q})
@@ -82,6 +82,7 @@ class Session:
                 self.state.status = "stale"   # parse failed; keep last guidance
                 continue
             self.state.status = "listening"
+            update.coverage = self.coach.coverage.copy()
             self.state.update = update
             for f in update.facts:
                 if f not in self.state.facts:
@@ -110,8 +111,13 @@ class Session:
         console.print("[bold]loading parakeet…[/bold] (first run downloads ~1.2GB)")
         worker = ASRWorker(self.channels, self.on_utterance)
         worker.start()
-        if not worker.ready.wait(timeout=600) or not worker.is_alive():
-            sys.exit("parakeet model failed to load")
+        waited = 0.0
+        while not worker.ready.wait(timeout=1.0):
+            waited += 1.0
+            if not worker.is_alive():
+                sys.exit("parakeet model failed to load (see log)")
+            if waited >= 600:
+                sys.exit("timed out loading parakeet model")
         for s in self.sources:
             s.start()
         threading.Thread(target=self.coach_loop, daemon=True).start()
