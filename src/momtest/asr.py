@@ -39,9 +39,13 @@ class ASRWorker(threading.Thread):
         self._stop.set()
 
     def run(self) -> None:
-        from parakeet_mlx import from_pretrained  # slow import, keep in thread
+        try:
+            from parakeet_mlx import from_pretrained  # slow import, keep in thread
 
-        model = from_pretrained(self.model_id)
+            model = from_pretrained(self.model_id)
+        except Exception:
+            logger.error("failed to load ASR model %s", self.model_id, exc_info=True)
+            return
         self.ready.set()
 
         while not self._stop.is_set():

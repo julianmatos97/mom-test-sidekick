@@ -1,6 +1,7 @@
 """Wires audio → asr → transcript → coach → hud. Blocking run loop."""
 from __future__ import annotations
 
+import logging
 import queue
 import sys
 import termios
@@ -71,7 +72,9 @@ class Session:
                     update = self.coach.tick(recent)
                     break
                 except Exception:
-                    time.sleep(2 ** attempt)
+                    logging.getLogger(__name__).warning("coach tick failed", exc_info=True)
+                    if attempt < 2:
+                        time.sleep(2 ** attempt)
             else:
                 self.state.status = "error"
                 continue
@@ -86,6 +89,8 @@ class Session:
             self.alert_history.extend(update.alerts)
 
     def keys_loop(self) -> None:
+        if not sys.stdin.isatty():
+            return
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
         try:
@@ -105,28 +110,37 @@ class Session:
         console.print("[bold]loading parakeet…[/bold] (first run downloads ~1.2GB)")
         worker = ASRWorker(self.channels, self.on_utterance)
         worker.start()
-        worker.ready.wait()
+        if not worker.ready.wait(timeout=600) or not worker.is_alive():
+            sys.exit("parakeet model failed to load")
         for s in self.sources:
             s.start()
         threading.Thread(target=self.coach_loop, daemon=True).start()
+        old_term = termios.tcgetattr(sys.stdin.fileno()) if sys.stdin.isatty() else None
         threading.Thread(target=self.keys_loop, daemon=True).start()
 
         last_reconnect = 0.0
-        with Live(build_hud(self.state), console=console, refresh_per_second=4) as live:
-            while not self.quit.is_set():
-                # auto-reconnect a dead system tap (spec: banner + reconnect loop)
-                for s in self.sources:
-                    if isinstance(s, audio.SystemCapture) and not s.alive():
-                        self.state.status = "error"
-                        if time.time() - last_reconnect > 5.0:
-                            last_reconnect = time.time()
-                            try:
-                                s.start()
-                                self.state.status = "listening"
-                            except Exception:
-                                pass
-                live.update(build_hud(self.state))
-                time.sleep(0.25)
+        try:
+            with Live(build_hud(self.state), console=console, refresh_per_second=4) as live:
+                while not self.quit.is_set():
+                    # auto-reconnect a dead system tap (spec: banner + reconnect loop)
+                    for s in self.sources:
+                        if isinstance(s, audio.SystemCapture) and not s.alive():
+                            self.state.status = "error"
+                            if time.time() - last_reconnect > 5.0:
+                                last_reconnect = time.time()
+                                try:
+                                    s.start()
+                                    self.state.status = "listening"
+                                except Exception:
+                                    logging.getLogger(__name__).warning(
+                                        "system tap reconnect failed", exc_info=True)
+                    live.update(build_hud(self.state))
+                    time.sleep(0.25)
+        except KeyboardInterrupt:
+            self.quit.set()
+        finally:
+            if old_term is not None:
+                termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old_term)
 
         for s in self.sources:
             s.stop()
