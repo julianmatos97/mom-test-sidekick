@@ -1,6 +1,7 @@
 """ASR worker: channel queues → segmenter → Parakeet → utterance callback."""
 from __future__ import annotations
 
+import logging
 import queue
 import tempfile
 import threading
@@ -12,6 +13,8 @@ import numpy as np
 import soundfile as sf
 
 from momtest.segmenter import Segmenter
+
+logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 MODEL_ID = "mlx-community/parakeet-tdt-0.6b-v2"
@@ -50,9 +53,16 @@ class ASRWorker(threading.Thread):
                     continue
                 idle = False
                 for segment in self.segmenters[speaker].push(block):
-                    text = self._transcribe(model, segment)
-                    if text:
-                        self.on_utterance(speaker, text, time.time())
+                    try:
+                        text = self._transcribe(model, segment)
+                        if text:
+                            self.on_utterance(speaker, text, time.time())
+                    except Exception:
+                        logger.warning(
+                            "transcription failed for %s segment; skipping",
+                            speaker,
+                            exc_info=True,
+                        )
             if idle:
                 time.sleep(0.05)
 
