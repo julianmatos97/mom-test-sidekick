@@ -87,6 +87,10 @@ packages = ["src/momtest"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["slow: needs the real Parakeet model or live audio"]
+
+[tool.uv]
+# Without these, uv backtracks numba to 2021-era versions (llvmlite<0.37 build failure)
+constraint-dependencies = ["numba>=0.60", "llvmlite>=0.43"]
 ```
 
 Write `.gitignore`:
