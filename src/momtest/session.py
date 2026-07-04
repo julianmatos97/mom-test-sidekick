@@ -15,7 +15,7 @@ from rich.live import Live
 
 from momtest import audio
 from momtest.asr import ASRWorker
-from momtest.coach import CoachEngine, CoachUpdate
+from momtest.coach import CoachUpdate, create_coach
 from momtest.debrief import write_debrief
 from momtest.transcript import Transcript
 from momtest.tui import HudState, build_hud
@@ -31,7 +31,7 @@ class Session:
         self.sources = sources          # objects with .start()/.stop()
         self.channels = channels        # {"you": Queue, "them": Queue}
         self.transcript = Transcript()
-        self.coach = CoachEngine(hypothesis, DEFAULT_GOALS)
+        self.coach = create_coach(hypothesis, DEFAULT_GOALS)
         self.state = HudState(update=CoachUpdate(coverage=self.coach.coverage.copy()))
         self.alert_history: list[dict] = []
         self.paused = False

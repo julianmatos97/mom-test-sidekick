@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import subprocess
+import tempfile
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from pydantic_ai import Agent
 
 DEFAULT_MODEL = "anthropic:claude-haiku-4-5-20251001"
@@ -81,3 +84,79 @@ class CoachEngine:
         if update.coverage:
             self.coverage.update(update.coverage)
         return update
+
+
+def _strict_schema(goals: list[str]) -> dict:
+    """CoachUpdate schema in OpenAI strict form: every object gets additionalProperties: false
+    and all properties required; the open coverage dict becomes explicit per-goal keys."""
+    schema = CoachUpdate.model_json_schema()
+    schema["properties"]["coverage"] = {
+        "type": "object",
+        "properties": {g: {"type": "string", "enum": ["missing", "partial", "covered"]}
+                       for g in goals},
+        "required": list(goals),
+        "additionalProperties": False,
+    }
+    for obj in (schema, *schema.get("$defs", {}).values()):
+        if obj.get("type") == "object":
+            obj["additionalProperties"] = False
+            obj["required"] = list(obj.get("properties", {}))
+    return schema
+
+
+class CodexCoachEngine:
+    """Coach backed by the OpenAI Codex CLI (`codex exec`). No API key; uses ChatGPT login."""
+
+    def __init__(self, hypothesis: str, goals: list[str],
+                 model: str | None = None, binary: str = "codex"):
+        self.hypothesis = hypothesis
+        self.coverage: dict[str, str] = {g: "missing" for g in goals}
+        self.summary = ""
+        self.model = model
+        self.binary = binary
+        fd, self._schema_path = tempfile.mkstemp(suffix=".json", prefix="momtest-schema-")
+        with os.fdopen(fd, "w") as f:
+            json.dump(_strict_schema(goals), f)
+
+    def tick(self, recent: str) -> CoachUpdate | None:
+        """One coaching pass. Raises on codex failure (caller retries); merges coverage."""
+        prompt = SYSTEM_PROMPT + "\n\n" + build_user_prompt(
+            self.hypothesis, recent, self.summary, self.coverage)
+        out = tempfile.NamedTemporaryFile(
+            mode="r", suffix=".json", prefix="momtest-out-", delete=False)
+        try:
+            cmd = [self.binary, "exec", "--ephemeral", "--skip-git-repo-check",
+                   "-s", "read-only", "--color", "never",
+                   "--output-schema", self._schema_path, "-o", out.name]
+            if self.model:
+                cmd += ["-m", self.model]
+            cmd.append(prompt)
+            proc = subprocess.run(cmd, capture_output=True, timeout=90,
+                                  cwd=tempfile.gettempdir())
+            if proc.returncode != 0:
+                tail = proc.stderr.decode(errors="replace")[-500:]
+                logging.getLogger(__name__).warning("codex exec failed: %s", tail)
+                raise RuntimeError(f"codex exec exited {proc.returncode}")
+            text = out.read().strip()
+            if text.startswith("```"):
+                text = text.strip("`\n")
+                text = text.partition("\n")[2] if text.startswith("json") else text
+            try:
+                update = CoachUpdate.model_validate_json(text)
+            except (ValidationError, json.JSONDecodeError):
+                logging.getLogger(__name__).warning(
+                    "codex returned unparseable output: %r", text[:200])
+                return None
+            if update.coverage:
+                self.coverage.update(update.coverage)
+            return update
+        finally:
+            out.close()
+            os.unlink(out.name)
+
+
+def create_coach(hypothesis: str, goals: list[str]) -> CoachEngine | CodexCoachEngine:
+    resolved = resolve_model()
+    if resolved == "codex" or resolved.startswith("codex:"):
+        return CodexCoachEngine(hypothesis, goals, model=resolved.partition(":")[2] or None)
+    return CoachEngine(hypothesis, goals, model=resolved)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -22,6 +23,11 @@ PROVIDER_ENV_VARS = {
 def check_api_key() -> None:
     model = resolve_model()
     provider = model.split(":", 1)[0]
+    if provider == "codex":
+        if not shutil.which("codex"):
+            sys.exit("codex CLI not found — install with `brew install codex` or "
+                     "`npm i -g @openai/codex`, then `codex login`.")
+        return
     var = PROVIDER_ENV_VARS.get(provider)
     if var and not os.environ.get(var):
         sys.exit(f"{var} not set — the coach needs it for model {model!r} "

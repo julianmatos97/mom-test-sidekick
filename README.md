@@ -12,6 +12,7 @@ Writes a markdown debrief per call to `calls/`.
 - Xcode command line tools (`xcode-select --install`)
 - `uv`
 - API key for your model provider in the environment (default `ANTHROPIC_API_KEY`; set `MOMTEST_MODEL` like `openai:gpt-5` to switch providers)
+- Alternatively, `MOMTEST_MODEL=codex` uses the OpenAI Codex CLI (ChatGPT login, no API key)
 
 ## Setup
 
