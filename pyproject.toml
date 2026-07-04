@@ -1,7 +1,9 @@
 [project]
 name = "momtest"
 version = "0.1.0"
-description = "Mom Test discovery-call HUD"
+description = "Discovery call assistant for shy nerds"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "parakeet-mlx",
