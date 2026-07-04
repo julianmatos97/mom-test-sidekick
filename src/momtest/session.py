@@ -32,12 +32,7 @@ class Session:
         self.channels = channels        # {"you": Queue, "them": Queue}
         self.transcript = Transcript()
         self.coach = create_coach(hypothesis, DEFAULT_GOALS)
-        self.state = HudState(update=CoachUpdate(
-            coverage=self.coach.coverage.copy(),
-            questions=[
-                "Ask: walk me through the last time you dealt with this.",
-                "Ask: what are you doing about it today?",
-            ]))
+        self.state = HudState(update=CoachUpdate(coverage=self.coach.coverage.copy()))
         self.alert_history: list[dict] = []
         self.paused = False
         self.quit = threading.Event()
@@ -123,6 +118,8 @@ class Session:
         console.print("[bold]loading parakeet…[/bold] (first run downloads ~1.2GB)")
         worker = ASRWorker(self.channels, self.on_utterance)
         worker.start()
+        # coach starts now so hypothesis-tailored openers generate while the model loads
+        threading.Thread(target=self.coach_loop, daemon=True).start()
         waited = 0.0
         while not worker.ready.wait(timeout=1.0):
             waited += 1.0
@@ -132,7 +129,6 @@ class Session:
                 sys.exit("timed out loading parakeet model")
         for s in self.sources:
             s.start()
-        threading.Thread(target=self.coach_loop, daemon=True).start()
         old_term = termios.tcgetattr(sys.stdin.fileno()) if sys.stdin.isatty() else None
         threading.Thread(target=self.keys_loop, daemon=True).start()
 
