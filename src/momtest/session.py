@@ -20,7 +20,7 @@ from momtest.debrief import write_debrief
 from momtest.transcript import Transcript
 from momtest.tui import HudState, build_hud
 
-COACH_INTERVAL_S = 15.0
+COACH_INTERVAL_S = 8.0
 DEFAULT_GOALS = ["problem", "current solution", "cost of problem", "budget & authority"]
 
 

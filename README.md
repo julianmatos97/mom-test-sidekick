@@ -11,8 +11,7 @@ Writes a markdown debrief per call to `calls/`.
 - Apple Silicon Mac (Parakeet runs via MLX), macOS 13+
 - Xcode command line tools (`xcode-select --install`)
 - `uv`
-- API key for your model provider in the environment (default `ANTHROPIC_API_KEY`; set `MOMTEST_MODEL` like `openai:gpt-5` to switch providers)
-- Alternatively, `MOMTEST_MODEL=codex` uses the OpenAI Codex CLI (ChatGPT login, no API key)
+- Default coach model is `codex:gpt-5.4-mini` via the OpenAI Codex CLI (ChatGPT login, no API key). Set `MOMTEST_MODEL` (e.g. `anthropic:claude-haiku-4-5-20251001`, `openai:gpt-5`) to use an API provider instead — then its API key must be in the environment
 
 ## Setup
 

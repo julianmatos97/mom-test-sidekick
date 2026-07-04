@@ -74,8 +74,13 @@ def test_factory_codex_default_model(monkeypatch):
     assert coach.model is None
 
 
-def test_factory_defaults_to_pydantic_ai(monkeypatch):
+def test_factory_defaults_to_codex_mini(monkeypatch):
     monkeypatch.delenv("MOMTEST_MODEL", raising=False)
-    assert isinstance(create_coach("hypo", ["problem"]), CoachEngine)
+    coach = create_coach("hypo", ["problem"])
+    assert isinstance(coach, CodexCoachEngine)
+    assert coach.model == "gpt-5.4-mini"
+
+
+def test_factory_pydantic_ai_for_provider_models(monkeypatch):
     monkeypatch.setenv("MOMTEST_MODEL", "anthropic:claude-haiku-4-5-20251001")
     assert isinstance(create_coach("hypo", ["problem"]), CoachEngine)

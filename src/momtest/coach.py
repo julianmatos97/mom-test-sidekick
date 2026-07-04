@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from pydantic_ai import Agent
 
-DEFAULT_MODEL = "anthropic:claude-haiku-4-5-20251001"
+DEFAULT_MODEL = "codex:gpt-5.4-mini"
 
 SYSTEM_PROMPT = """\
 You are a live coach for customer discovery calls, enforcing The Mom Test (Rob Fitzpatrick).
