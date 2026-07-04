@@ -60,7 +60,11 @@ class Session:
         self.state.last_heard = f"{speaker}: {text}"
 
     def coach_loop(self) -> None:
-        while not self.quit.wait(COACH_INTERVAL_S):
+        while True:
+            self.state.next_tick_ts = time.time() + COACH_INTERVAL_S
+            if self.quit.wait(COACH_INTERVAL_S):
+                return
+            self.state.next_tick_ts = 0.0  # tick in flight → HUD shows "thinking…"
             if self.paused or not self.transcript.utterances:
                 continue
             window = self.transcript.window(120)

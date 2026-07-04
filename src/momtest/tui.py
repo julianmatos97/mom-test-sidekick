@@ -1,6 +1,7 @@
 """CoachState → Rich layout. Pure rendering, no I/O."""
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 
 from rich.console import Group
@@ -17,6 +18,7 @@ class HudState:
     facts: list[str] = field(default_factory=list)      # accumulated across ticks
     status: str = "listening"                            # listening | paused | stale | error
     last_heard: str = ""                                 # most recent utterance snippet
+    next_tick_ts: float = 0.0                            # epoch of next coach tick; 0 = in flight
 
 
 STATUS_STYLE = {"listening": "green", "paused": "yellow", "stale": "yellow", "error": "red"}
@@ -33,9 +35,15 @@ def build_hud(state: HudState) -> Layout:
     layout["bottom"].split_row(Layout(name="coverage"), Layout(name="facts"))
 
     questions = state.update.questions or ["(listening…)"]
+    if state.status == "paused":
+        tick = ""
+    elif state.next_tick_ts > time.time():
+        tick = f" · next tick {state.next_tick_ts - time.time():.0f}s"
+    else:
+        tick = " · thinking…"
     layout["questions"].update(Panel(
         Group(*[Text(q, style="bold cyan") for q in questions]),
-        title=f"ASK NEXT — {state.status}",
+        title=f"ASK NEXT — {state.status}{tick}",
         border_style=STATUS_STYLE.get(state.status, "white")))
 
     if state.update.alerts:
