@@ -32,7 +32,12 @@ class Session:
         self.channels = channels        # {"you": Queue, "them": Queue}
         self.transcript = Transcript()
         self.coach = create_coach(hypothesis, DEFAULT_GOALS)
-        self.state = HudState(update=CoachUpdate(coverage=self.coach.coverage.copy()))
+        self.state = HudState(update=CoachUpdate(
+            coverage=self.coach.coverage.copy(),
+            questions=[
+                "Ask: walk me through the last time you dealt with this.",
+                "Ask: what are you doing about it today?",
+            ]))
         self.alert_history: list[dict] = []
         self.paused = False
         self.quit = threading.Event()
@@ -60,12 +65,15 @@ class Session:
         self.state.last_heard = f"{speaker}: {text}"
 
     def coach_loop(self) -> None:
+        first = True
         while True:
-            self.state.next_tick_ts = time.time() + COACH_INTERVAL_S
-            if self.quit.wait(COACH_INTERVAL_S):
-                return
+            if not first:  # first tick fires immediately: hypothesis-tailored openers
+                self.state.next_tick_ts = time.time() + COACH_INTERVAL_S
+                if self.quit.wait(COACH_INTERVAL_S):
+                    return
             self.state.next_tick_ts = 0.0  # tick in flight → HUD shows "thinking…"
-            if self.paused or not self.transcript.utterances:
+            was_first, first = first, False
+            if self.paused or (not self.transcript.utterances and not was_first):
                 continue
             window = self.transcript.window(120)
             recent = Transcript.render(window)
